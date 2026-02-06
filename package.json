@@ -70,5 +70,9 @@
     "*.md": [
       "prettier --config ./.prettierrc.js --write"
     ]
+  },
+  "dependencies": {
+    "@vitejs/plugin-vue": "^5.2.4",
+    "vite-svg-loader": "^5.1.0"
   }
 }

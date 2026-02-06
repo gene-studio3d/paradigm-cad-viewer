@@ -1,9 +1,21 @@
-import { resolve } from 'path'
+import { resolve, dirname } from 'path'
+import { createRequire } from 'module'
 import { Alias, defineConfig } from 'vite'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
 import svgLoader from 'vite-svg-loader'
 import { visualizer } from 'rollup-plugin-visualizer'
 import vue from '@vitejs/plugin-vue'
+
+const require = createRequire(import.meta.url)
+
+/**
+ * Resolve the dist directory of an npm package using Node module resolution.
+ * This works correctly with pnpm's symlinked node_modules and workspace packages.
+ */
+function resolvePackageDist(packageName: string): string {
+  const pkgJson = require.resolve(`${packageName}/package.json`)
+  return resolve(dirname(pkgJson), 'dist')
+}
 
 export default defineConfig(({ command, mode }) => {
   const aliases: Alias[] = []
@@ -14,17 +26,28 @@ export default defineConfig(({ command, mode }) => {
     })
   }
 
+  // Resolve worker file paths from their origin packages instead of relying
+  // on the intermediate cad-simple-viewer/dist (which may not be built yet
+  // when running the example directly in a monorepo).
+  const dataModelDist = resolvePackageDist('@mlightcad/data-model')
+  const libredwgDist = resolvePackageDist('@mlightcad/libredwg-converter')
+  const mtextDist = resolvePackageDist('@mlightcad/mtext-renderer')
+
   const plugins = [
     vue(),
     svgLoader(),
     viteStaticCopy({
       targets: [
         {
-          src: './node_modules/@mlightcad/data-model/dist/dxf-parser-worker.js',
+          src: resolve(dataModelDist, 'dxf-parser-worker.js'),
           dest: 'assets'
         },
         {
-          src: './node_modules/@mlightcad/cad-simple-viewer/dist/*-worker.js',
+          src: resolve(libredwgDist, 'libredwg-parser-worker.js'),
+          dest: 'assets'
+        },
+        {
+          src: resolve(mtextDist, 'mtext-renderer-worker.js'),
           dest: 'assets'
         }
       ]
