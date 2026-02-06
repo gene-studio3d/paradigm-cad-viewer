@@ -1,26 +1,42 @@
 import { resolve, dirname } from 'path'
 import { createRequire } from 'module'
+import { existsSync } from 'fs'
 import { defineConfig } from 'vite'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
 
 const require = createRequire(import.meta.url)
 
 /**
- * Resolve the dist directory of an npm package using Node module resolution.
- * This works correctly with pnpm's symlinked node_modules and workspace packages.
+ * Safely resolve a file from an npm package's dist directory.
+ * Returns the resolved absolute path, or null if the package or file is not found.
  */
-function resolvePackageDist(packageName: string): string {
-  const pkgJson = require.resolve(`${packageName}/package.json`)
-  return resolve(dirname(pkgJson), 'dist')
+function resolveWorkerFile(packageName: string, fileName: string): string | null {
+  try {
+    const pkgJson = require.resolve(`${packageName}/package.json`)
+    const filePath = resolve(dirname(pkgJson), 'dist', fileName)
+    return existsSync(filePath) ? filePath : null
+  } catch {
+    // Package not installed — skip
+    return null
+  }
 }
 
 export default defineConfig(() => {
-  // Resolve worker file paths from their origin packages instead of relying
-  // on the intermediate cad-simple-viewer/dist (which may not be built yet
-  // when running the example directly in a monorepo).
-  const dataModelDist = resolvePackageDist('@mlightcad/data-model')
-  const libredwgDist = resolvePackageDist('@mlightcad/libredwg-converter')
-  const mtextDist = resolvePackageDist('@mlightcad/mtext-renderer')
+  // Build the list of worker copy targets, skipping any that can't be found.
+  // Workers live in their original npm packages; we resolve them directly so
+  // the example doesn't depend on cad-simple-viewer being pre-built.
+  const workerSources = [
+    { pkg: '@mlightcad/data-model', file: 'dxf-parser-worker.js' },
+    { pkg: '@mlightcad/libredwg-converter', file: 'libredwg-parser-worker.js' },
+    { pkg: '@mlightcad/mtext-renderer', file: 'mtext-renderer-worker.js' }
+  ]
+
+  const targets = workerSources
+    .map(({ pkg, file }) => {
+      const src = resolveWorkerFile(pkg, file)
+      return src ? { src, dest: 'workers' } : null
+    })
+    .filter((t): t is { src: string; dest: string } => t !== null)
 
   return {
     base: './',
@@ -34,24 +50,16 @@ export default defineConfig(() => {
       }
     },
     plugins: [
-      viteStaticCopy({
-        // Copy JavaScript worker bundle on purpose in order to demostrate how to config
-        // worker file urls in AcApDocManager.createInstance
-        targets: [
-          {
-            src: resolve(dataModelDist, 'dxf-parser-worker.js'),
-            dest: 'workers'
-          },
-          {
-            src: resolve(libredwgDist, 'libredwg-parser-worker.js'),
-            dest: 'workers'
-          },
-          {
-            src: resolve(mtextDist, 'mtext-renderer-worker.js'),
-            dest: 'workers'
-          }
-        ]
-      })
+      // Only add the static-copy plugin when there are worker files to copy
+      ...(targets.length > 0
+        ? [
+            viteStaticCopy({
+              // Copy JavaScript worker bundles so they can be configured via
+              // AcApDocManager.createInstance worker file urls
+              targets
+            })
+          ]
+        : [])
     ]
   }
 })
