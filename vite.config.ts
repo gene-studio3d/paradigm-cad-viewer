@@ -35,13 +35,22 @@ export default defineConfig(() => {
     .filter((t): t is { src: string; dest: string } => t !== null)
 
   return {
-    root: resolve(__dirname, 'packages/cad-simple-viewer-example'),
     base: './',
+    resolve: {
+      alias: [
+        // Redirect local workspace packages to their TypeScript source so that
+        // Vite can compile them on the fly without requiring a prior build step.
+        {
+          find: /^@mlightcad\/(cad-simple-viewer|cad-viewer|svg-renderer|three-renderer)$/,
+          replacement: resolve(__dirname, 'packages/$1/src')
+        }
+      ]
+    },
     build: {
       modulePreload: false,
       rollupOptions: {
         input: {
-          main: resolve(__dirname, 'packages/cad-simple-viewer-example/index.html')
+          main: resolve(__dirname, 'index.html')
         }
       }
     },
